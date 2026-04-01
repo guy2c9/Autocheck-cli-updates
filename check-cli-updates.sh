@@ -349,9 +349,12 @@ if command -v java &>/dev/null; then
       add_summary "Java (Zulu)" "$java_current" "" "Up to date" "$java_legacy_note"
     fi
   else
-    echo -e "  ${YELLOW}Not installed via Homebrew — update manually or install with: brew install --cask zulu@17${RESET}"
+    # Detect the latest available Zulu major version from Homebrew
+    zulu_latest_cask=$(brew search --cask "zulu@" 2>/dev/null | grep -oE 'zulu@[0-9]+' | sort -t@ -k2 -n | tail -1)
+    zulu_install_cmd="${zulu_latest_cask:-zulu}"
+    echo -e "  ${YELLOW}Not installed via Homebrew — update manually or install with: brew install --cask ${zulu_install_cmd}${RESET}"
     java_status="not managed by Homebrew"
-    add_summary "Java (Zulu)" "$java_current" "" "Not managed" "Run: brew install --cask zulu@17"
+    add_summary "Java (Zulu)" "$java_current" "" "Not managed" "Run: brew install --cask ${zulu_install_cmd}"
   fi
 fi
 
