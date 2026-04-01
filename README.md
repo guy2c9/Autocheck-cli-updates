@@ -22,7 +22,7 @@ A shell script that checks for and installs updates across all CLI applications 
 ## Run Manually (One-Off)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh -o /tmp/check-cli-updates.sh && bash /tmp/check-cli-updates.sh
 ```
 
 ## Run Automatically (Once Per Day)
@@ -50,7 +50,12 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
      local last_run_file="$HOME/.cli-update-last-run"
      local today=$(date +%Y-%m-%d)
      if [ "$(cat "$last_run_file" 2>/dev/null)" != "$today" ]; then
-       curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+       local tmp="/tmp/check-cli-updates.sh"
+       if curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh -o "$tmp" && [ -s "$tmp" ]; then
+         bash "$tmp"
+       else
+         echo "⚠ CLI update check: could not fetch script"
+       fi
        echo "$today" > "$last_run_file"
      fi
    }
