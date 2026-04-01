@@ -25,27 +25,38 @@ A shell script that checks for and installs updates across all CLI applications 
 curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
 ```
 
-## Run Automatically on Warp Launch
+## Run Automatically When Opening Warp or Terminal
 
-1. Open **Warp**
-2. Go to **Settings** (Cmd + ,)
-3. Navigate to **Features > Session**
-4. Set the startup command to:
+Add the following line to the end of your `~/.zshrc` file:
 
-```
+```bash
 curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
 ```
 
-## Run Automatically on Terminal.app Launch
+To do this, run:
 
-1. Open **Terminal**
-2. Go to **Terminal > Settings** (Cmd + ,)
-3. Select your profile under **Profiles**
-4. Go to the **Shell** tab
-5. Under **Startup > Run command**, enter:
-
+```bash
+echo 'curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash' >> ~/.zshrc
 ```
-curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+
+This works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that uses zsh.
+
+The script will run once each time a new shell session starts (e.g. opening the app or a new tab).
+
+### Run Once Per Day Only
+
+If you'd prefer the script to only run once per day (not on every new tab), use this instead:
+
+```bash
+echo '[ "$(date +%Y-%m-%d)" != "$(cat ~/.cli-update-last-run 2>/dev/null)" ] && curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash && date +%Y-%m-%d > ~/.cli-update-last-run' >> ~/.zshrc
+```
+
+### Remove Automatic Updates
+
+To stop the script from running automatically, edit `~/.zshrc` and remove the line you added:
+
+```bash
+nano ~/.zshrc
 ```
 
 ## Behaviour
