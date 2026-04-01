@@ -2,12 +2,6 @@
 
 A shell script that checks for and installs updates across all CLI applications on macOS.
 
-## Usage
-
-```bash
-./check-cli-updates.sh
-```
-
 ## What It Checks & Updates
 
 | Tool | Check Method | Update Command |
@@ -24,6 +18,35 @@ A shell script that checks for and installs updates across all CLI applications 
 | **Java (Azul Zulu)** | Compares brew cask installed vs latest | `brew upgrade --cask zulu@XX` |
 | **Slack CLI** | Compares against brew cask info | `brew upgrade --cask slack-cli` |
 | **Google Cloud CLI** | `gcloud version` before/after | `gcloud components update --quiet` |
+
+## Run Manually (One-Off)
+
+```bash
+curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+```
+
+## Run Automatically on Warp Launch
+
+1. Open **Warp**
+2. Go to **Settings** (Cmd + ,)
+3. Navigate to **Features > Session**
+4. Set the startup command to:
+
+```
+curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+```
+
+## Run Automatically on Terminal.app Launch
+
+1. Open **Terminal**
+2. Go to **Terminal > Settings** (Cmd + ,)
+3. Select your profile under **Profiles**
+4. Go to the **Shell** tab
+5. Under **Startup > Run command**, enter:
+
+```
+curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+```
 
 ## Behaviour
 
