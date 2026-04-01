@@ -29,7 +29,7 @@ _cli_update_check() {
   local last_run_file="$HOME/.cli-update-last-run"
   local today=$(date +%Y-%m-%d)
   if [ "$(cat "$last_run_file" 2>/dev/null)" != "$today" ]; then
-    curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh | bash
+    curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh | bash
     echo "$today" > "$last_run_file"
   fi
 }
@@ -58,7 +58,7 @@ _cli_update_check() {
   local today=$(date +%Y-%m-%d)
   if [ "$(cat "$last_run_file" 2>/dev/null)" != "$today" ]; then
     local tmp="/tmp/check-cli-updates.sh"
-    if curl -sL https://raw.githubusercontent.com/guy2c9/Terminal-check-cli-updates/main/check-cli-updates.sh -o "$tmp" && [ -s "$tmp" ]; then
+    if curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh -o "$tmp" && [ -s "$tmp" ]; then
       bash "$tmp"
     else
       echo "⚠ CLI update check: could not fetch script"
