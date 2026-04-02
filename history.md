@@ -26,6 +26,9 @@
 
 8. `59c93c6` — Fix curl-pipe-to-bash causing script to terminate early
 9. `a30eb74` — Rename repo references from Terminal-check-cli-updates to Autocheck-cli-updates
+10. `b6af6e6` — Remove pip auto-upgrade, fix forced cd, align README with script
+11. `69ac4b7` — Add sf plugins update to Salesforce CLI section
+12. `8c57d47` — Add reset-and-run command to README
 
 **What was fixed:**
 
@@ -34,6 +37,8 @@
 - Replaced pip3 auto-upgrade with report-only (removed `--break-system-packages` risk)
 - Fixed README table to match actual SF CLI behaviour
 - Updated all repo URL references to Autocheck-cli-updates
+- Added `sf plugins update` to Salesforce CLI section
+- Added reset-and-run command to README for manual testing
 
 ---
 
