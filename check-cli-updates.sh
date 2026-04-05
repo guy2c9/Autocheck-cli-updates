@@ -16,22 +16,75 @@ shorten_warp_ver() {
   echo "$1" | sed -E 's/^0\.//; s/\.[0-9]{2}\.[0-9]{2}\.stable.*//'
 }
 
+# Helper: extract a top-level string field from brew JSON without python3
+# Usage: brew_json_field "$json" "version"  or  brew_json_field "$json" "installed"
+brew_json_field() {
+  local json="$1" field="$2"
+  echo "$json" | grep -o "\"${field}\":[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*:.*"\(.*\)"/\1/'
+}
+
+# Helper: check and update an npm-installed global CLI tool
+# Usage: check_npm_tool "Display Name" "version_cmd" "npm_package" [extra_post_update_cmd]
+#   version_cmd is evaluated via eval to support multi-word commands like "npx playwright"
+check_npm_tool() {
+  local display_name="$1" version_cmd="$2" npm_pkg="$3" post_cmd="${4:-}"
+
+  header "$display_name"
+  local current latest
+  current=$(eval "$version_cmd" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  latest=$(npm view "$npm_pkg" version 2>/dev/null || true)
+
+  if [[ -n "$latest" && -n "$current" && "$current" != "$latest" ]]; then
+    echo -e "  Current: ${YELLOW}${current}${RESET}"
+    echo -e "  Latest:  ${GREEN}${latest}${RESET}"
+    echo ""
+    echo -e "${YELLOW}Updating ${display_name}...${RESET}"
+    npm install -g "${npm_pkg}@latest" 2>&1 || true
+    if [[ -n "$post_cmd" ]]; then
+      eval "$post_cmd" 2>&1 || true
+    fi
+    add_summary "$display_name" "$current" "$latest" "Updated" "Via npm global"
+  else
+    echo -e "  Version: ${current}"
+    echo -e "${GREEN}  ${display_name} is up to date.${RESET}"
+    add_summary "$display_name" "$current" "" "Up to date" ""
+  fi
+}
+
+# Helper: check and update a Homebrew cask-installed CLI tool
+# Usage: check_brew_cask_tool "Display Name" "command" "cask_name" "version_cmd"
+# version_cmd should output just the version string
+check_brew_cask_tool() {
+  local display_name="$1" cmd="$2" cask_name="$3" version_cmd="$4"
+
+  if ! command -v "$cmd" &>/dev/null; then
+    return
+  fi
+
+  header "$display_name"
+  local current latest cask_json
+  current=$(eval "$version_cmd" 2>/dev/null || true)
+  cask_json=$(brew info --json=v2 --cask "$cask_name" 2>/dev/null || true)
+  latest=$(brew_json_field "$cask_json" "version")
+
+  if [[ -n "$latest" && -n "$current" && "$current" != "$latest" ]]; then
+    echo -e "  Current: ${YELLOW}${current}${RESET}"
+    echo -e "  Latest:  ${GREEN}${latest}${RESET}"
+    echo ""
+    echo -e "${YELLOW}Updating ${display_name}...${RESET}"
+    brew upgrade --cask "$cask_name" 2>&1 || true
+    add_summary "$display_name" "$current" "$latest" "Updated" "Via Homebrew cask"
+  else
+    echo -e "  Version: ${current}"
+    echo -e "${GREEN}  ${display_name} is up to date.${RESET}"
+    add_summary "$display_name" "$current" "" "Up to date" ""
+  fi
+}
+
 # Counters
 brew_formula_count=0
 brew_cask_count=0
 pip_count=0
-python_status="skipped"
-sf_status="skipped"
-claude_status="skipped"
-gh_status="skipped"
-op_status="skipped"
-warp_status="skipped"
-gcloud_status="skipped"
-java_status="skipped"
-slack_status="skipped"
-playwright_status="skipped"
-codex_status="skipped"
-gemini_status="skipped"
 
 # Version tracking for summary table
 declare -a summary_names=()
@@ -126,7 +179,8 @@ if command -v python3 &>/dev/null; then
   py_current=$(python3 --version 2>&1 | awk '{print $2}')
   py_latest=""
   # Check all installed python formulae via Homebrew
-  for formula in $(brew list --formula 2>/dev/null | grep "^python@"); do
+  while IFS= read -r formula; do
+    [[ -z "$formula" ]] && continue
     py_brew_json=$(brew info --json=v2 "$formula" 2>/dev/null || true)
     py_installed=$(echo "$py_brew_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['formulae'][0]['installed'][0]['version'])" 2>/dev/null || true)
     py_brew_latest=$(echo "$py_brew_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['formulae'][0]['versions']['stable'])" 2>/dev/null || true)
@@ -139,7 +193,7 @@ if command -v python3 &>/dev/null; then
     else
       echo -e "  ${formula}: ${py_installed:-unknown} — up to date"
     fi
-  done
+  done < <(brew list --formula 2>/dev/null | grep "^python@")
   if [[ "$py_latest" == "outdated" ]]; then
     python_status="update available"
   else
@@ -149,7 +203,8 @@ if command -v python3 &>/dev/null; then
 
   # Remove legacy Python versions that nothing depends on
   py_active=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
-  for formula in $(brew list --formula 2>/dev/null | grep "^python@"); do
+  while IFS= read -r formula; do
+    [[ -z "$formula" ]] && continue
     formula_ver=$(echo "$formula" | sed 's/python@//')
     if [[ "$formula_ver" != "$py_active" ]]; then
       dependents=$(brew uses --installed "$formula" 2>/dev/null || true)
@@ -162,7 +217,7 @@ if command -v python3 &>/dev/null; then
         echo -e "  ${formula} is a dependency of: ${dependents} — keeping."
       fi
     fi
-  done
+  done < <(brew list --formula 2>/dev/null | grep "^python@")
   if [[ "$python_status" == "up to date" ]]; then
     add_summary "Python" "$py_current" "" "Up to date" ""
   else
@@ -176,19 +231,17 @@ if command -v sf &>/dev/null; then
   header "Salesforce CLI (sf)"
   sf_current_ver=$(sf version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
   echo -e "${YELLOW}Checking for updates...${RESET}"
-  sf_update_output=$(sf update 2>&1 || true)
+  sf update 2>&1 || true
   sf_new_ver=$(sf version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 
   if [[ -n "$sf_current_ver" && -n "$sf_new_ver" && "$sf_current_ver" != "$sf_new_ver" ]]; then
     echo -e "  Previous: ${YELLOW}${sf_current_ver}${RESET}"
     echo -e "  Updated:  ${GREEN}${sf_new_ver}${RESET}"
-    sf_status="updated (${sf_current_ver} → ${sf_new_ver})"
     add_summary "Salesforce CLI" "$sf_current_ver" "$sf_new_ver" "Updated" ""
   else
     echo -e "  Version: ${sf_current_ver:-unknown}"
     echo -e "${GREEN}  Salesforce CLI is up to date.${RESET}"
-    sf_status="up to date"
-    add_summary "Salesforce CLI" "$sf_current_ver" "" "Up to date" ""
+    add_summary "Salesforce CLI" "${sf_current_ver:-unknown}" "" "Up to date" ""
   fi
 
   echo ""
@@ -211,13 +264,11 @@ if command -v claude &>/dev/null; then
   claude_output=$(claude update 2>&1 || true)
   if echo "$claude_output" | grep -qi "up to date"; then
     echo -e "${GREEN}  Claude Code is up to date.${RESET}"
-    claude_status="up to date"
     add_summary "Claude Code" "$claude_current" "" "Up to date" ""
   else
     claude_new=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     echo -e "  Previous: ${YELLOW}${claude_current}${RESET}"
     echo -e "  Updated:  ${GREEN}${claude_new:-check manually}${RESET}"
-    claude_status="updated (${claude_current} → ${claude_new:-?})"
     add_summary "Claude Code" "$claude_current" "${claude_new:-?}" "Updated" ""
   fi
 fi
@@ -225,45 +276,13 @@ fi
 # ── Codex CLI (OpenAI) ───────────────────────────
 
 if command -v codex &>/dev/null; then
-  header "Codex CLI (OpenAI)"
-  codex_current=$(codex --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  codex_latest=$(npm view @openai/codex version 2>/dev/null || true)
-  if [[ -n "$codex_latest" && -n "$codex_current" && "$codex_current" != "$codex_latest" ]]; then
-    echo -e "  Current: ${YELLOW}${codex_current}${RESET}"
-    echo -e "  Latest:  ${GREEN}${codex_latest}${RESET}"
-    echo ""
-    echo -e "${YELLOW}Updating Codex CLI...${RESET}"
-    npm install -g @openai/codex@latest 2>&1 || true
-    codex_status="updated (${codex_current} → ${codex_latest})"
-    add_summary "Codex CLI" "$codex_current" "$codex_latest" "Updated" "Via npm global"
-  else
-    echo -e "  Version: ${codex_current}"
-    echo -e "${GREEN}  Codex CLI is up to date.${RESET}"
-    codex_status="up to date"
-    add_summary "Codex CLI" "$codex_current" "" "Up to date" ""
-  fi
+  check_npm_tool "Codex CLI (OpenAI)" "codex" "@openai/codex"
 fi
 
 # ── Gemini CLI (Google) ──────────────────────────
 
 if command -v gemini &>/dev/null; then
-  header "Gemini CLI (Google)"
-  gemini_current=$(gemini --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  gemini_latest=$(npm view @google/gemini-cli version 2>/dev/null || true)
-  if [[ -n "$gemini_latest" && -n "$gemini_current" && "$gemini_current" != "$gemini_latest" ]]; then
-    echo -e "  Current: ${YELLOW}${gemini_current}${RESET}"
-    echo -e "  Latest:  ${GREEN}${gemini_latest}${RESET}"
-    echo ""
-    echo -e "${YELLOW}Updating Gemini CLI...${RESET}"
-    npm install -g @google/gemini-cli@latest 2>&1 || true
-    gemini_status="updated (${gemini_current} → ${gemini_latest})"
-    add_summary "Gemini CLI" "$gemini_current" "$gemini_latest" "Updated" "Via npm global"
-  else
-    echo -e "  Version: ${gemini_current}"
-    echo -e "${GREEN}  Gemini CLI is up to date.${RESET}"
-    gemini_status="up to date"
-    add_summary "Gemini CLI" "$gemini_current" "" "Up to date" ""
-  fi
+  check_npm_tool "Gemini CLI (Google)" "gemini" "@google/gemini-cli"
 fi
 
 # ── GitHub CLI ────────────────────────────────────
@@ -278,45 +297,27 @@ if command -v gh &>/dev/null; then
     echo ""
     echo -e "${YELLOW}Updating GitHub CLI...${RESET}"
     brew upgrade gh 2>&1 || true
-    gh_status="updated (${gh_current} → ${gh_latest})"
     add_summary "GitHub CLI" "$gh_current" "$gh_latest" "Updated" "Via Homebrew"
   else
     echo -e "  Version: ${gh_current}"
     echo -e "${GREEN}  GitHub CLI is up to date.${RESET}"
-    gh_status="up to date"
     add_summary "GitHub CLI" "$gh_current" "" "Up to date" ""
   fi
 fi
 
 # ── 1Password CLI ─────────────────────────────────
 
-if command -v op &>/dev/null; then
-  header "1Password CLI (op)"
-  op_current=$(op --version 2>/dev/null)
-  op_latest=$(brew info --json=v2 1password-cli 2>/dev/null | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
-  if [[ -n "$op_latest" && "$op_current" != "$op_latest" ]]; then
-    echo -e "  Current: ${YELLOW}${op_current}${RESET}"
-    echo -e "  Latest:  ${GREEN}${op_latest}${RESET}"
-    echo ""
-    echo -e "${YELLOW}Updating 1Password CLI...${RESET}"
-    brew upgrade --cask 1password-cli 2>&1 || true
-    op_status="updated (${op_current} → ${op_latest})"
-    add_summary "1Password CLI" "$op_current" "$op_latest" "Updated" "Via Homebrew cask"
-  else
-    echo -e "  Version: ${op_current}"
-    echo -e "${GREEN}  1Password CLI is up to date.${RESET}"
-    op_status="up to date"
-    add_summary "1Password CLI" "$op_current" "" "Up to date" ""
-  fi
-fi
+check_brew_cask_tool "1Password CLI" "op" "1password-cli" "op --version"
 
 # ── Warp Terminal ─────────────────────────────────
 
 if brew list --cask 2>/dev/null | grep -q "^warp$"; then
   header "Warp Terminal"
   warp_json=$(brew info --json=v2 --cask warp 2>/dev/null || true)
-  warp_installed=$(echo "$warp_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['casks'][0]['installed'])" 2>/dev/null || echo "unknown")
-  warp_latest=$(echo "$warp_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['casks'][0]['version'])" 2>/dev/null || echo "unknown")
+  warp_installed=$(brew_json_field "$warp_json" "installed")
+  warp_latest=$(brew_json_field "$warp_json" "version")
+  [[ -z "$warp_installed" ]] && warp_installed="unknown"
+  [[ -z "$warp_latest" ]] && warp_latest="unknown"
   warp_outdated=$(brew outdated --cask --greedy 2>/dev/null | grep "^warp" || true)
   if [[ -n "$warp_outdated" ]]; then
     echo -e "  Current: ${YELLOW}${warp_installed}${RESET}"
@@ -324,14 +325,12 @@ if brew list --cask 2>/dev/null | grep -q "^warp$"; then
     echo ""
     echo -e "${YELLOW}Updating Warp...${RESET}"
     brew upgrade --cask warp 2>&1 || true
-    warp_status="updated (${warp_installed} → ${warp_latest:-?})"
     warp_short_old=$(shorten_warp_ver "$warp_installed")
     warp_short_new=$(shorten_warp_ver "${warp_latest:-?}")
     add_summary "Warp" "${warp_short_old:-$warp_installed}" "${warp_short_new:-${warp_latest:-?}}" "Updated" "Via Homebrew cask"
   else
     echo -e "  Version: ${warp_installed}"
     echo -e "${GREEN}  Warp is up to date.${RESET}"
-    warp_status="up to date"
     warp_short=$(shorten_warp_ver "$warp_installed")
     add_summary "Warp" "${warp_short:-$warp_installed}" "" "Up to date" ""
   fi
@@ -345,43 +344,40 @@ if command -v java &>/dev/null; then
   java_vendor=$(java -version 2>&1 | grep -i "runtime" || true)
   echo -e "  Version: ${java_current}"
   echo -e "  ${java_vendor}"
-  # Remove legacy OpenJDK installations if Zulu is present or being installed
-  legacy_jdks=$(ls -d /Library/Java/JavaVirtualMachines/jdk-*.jdk 2>/dev/null | grep -v "zulu" || true)
+
+  # Report legacy OpenJDK installations (no longer auto-deletes)
+  legacy_jdk_paths=()
+  while IFS= read -r jdk_path; do
+    [[ -n "$jdk_path" ]] && legacy_jdk_paths+=("$jdk_path")
+  done < <(find /Library/Java/JavaVirtualMachines -maxdepth 1 -name "jdk-*.jdk" 2>/dev/null | grep -v "zulu" || true)
+
   java_legacy_note=""
-  if [[ -n "$legacy_jdks" ]]; then
-    legacy_names=""
+  if [[ ${#legacy_jdk_paths[@]} -gt 0 ]]; then
     echo ""
     echo -e "  ${YELLOW}Legacy OpenJDK installations found:${RESET}"
-    for jdk_path in $legacy_jdks; do
-      jdk_name=$(basename "$jdk_path")
-      echo -e "    ${jdk_name}"
-      legacy_names="${legacy_names}${jdk_name}, "
+    for jdk_path in "${legacy_jdk_paths[@]}"; do
+      echo -e "    $(basename "$jdk_path")"
     done
-    echo -e "  ${YELLOW}Removing legacy OpenJDKs...${RESET}"
-    for jdk_path in $legacy_jdks; do
-      sudo rm -rf "$jdk_path" 2>/dev/null || true
+    echo ""
+    echo -e "  ${YELLOW}To remove legacy OpenJDKs, run manually:${RESET}"
+    for jdk_path in "${legacy_jdk_paths[@]}"; do
+      echo -e "    sudo rm -rf \"${jdk_path}\""
     done
-    # Check if any legacy JDKs still remain
-    remaining_jdks=$(ls -d /Library/Java/JavaVirtualMachines/jdk-*.jdk 2>/dev/null | grep -v "zulu" || true)
-    if [[ -n "$remaining_jdks" ]]; then
-      java_legacy_note="Sudo required to remove legacy JDKs"
-    fi
-    if [[ -n "$java_legacy_note" ]]; then
-      echo -e "  ${RED}Could not remove — run with sudo manually.${RESET}"
-    else
-      java_legacy_note="Legacy OpenJDKs removed"
-      echo -e "  ${GREEN}Legacy OpenJDKs removed.${RESET}"
-    fi
+    java_legacy_note="Legacy OpenJDKs detected — manual removal suggested"
   fi
 
   # Check for Zulu casks installed via Homebrew
-  zulu_casks=$(brew list --cask 2>/dev/null | grep "^zulu" || true)
-  if [[ -n "$zulu_casks" ]]; then
+  zulu_cask_list=()
+  while IFS= read -r cask; do
+    [[ -n "$cask" ]] && zulu_cask_list+=("$cask")
+  done < <(brew list --cask 2>/dev/null | grep "^zulu" || true)
+
+  if [[ ${#zulu_cask_list[@]} -gt 0 ]]; then
     zulu_outdated=""
-    for cask in $zulu_casks; do
+    for cask in "${zulu_cask_list[@]}"; do
       cask_json=$(brew info --json=v2 --cask "$cask" 2>/dev/null || true)
-      cask_installed=$(echo "$cask_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['casks'][0]['installed'])" 2>/dev/null || true)
-      cask_latest=$(echo "$cask_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['casks'][0]['version'])" 2>/dev/null || true)
+      cask_installed=$(brew_json_field "$cask_json" "installed")
+      cask_latest=$(brew_json_field "$cask_json" "version")
       if [[ -n "$cask_installed" && -n "$cask_latest" && "$cask_installed" != "$cask_latest" ]]; then
         echo -e "  ${cask}: ${YELLOW}${cask_installed}${RESET} → ${GREEN}${cask_latest}${RESET}"
         echo -e "  ${YELLOW}Updating ${cask}...${RESET}"
@@ -390,13 +386,11 @@ if command -v java &>/dev/null; then
       fi
     done
     if [[ -n "$zulu_outdated" ]]; then
-      java_status="updated"
       java_note="Via Homebrew cask"
       [[ -n "$java_legacy_note" ]] && java_note="${java_legacy_note}"
       add_summary "Java (Zulu)" "$java_current" "updated" "Updated" "$java_note"
     else
       echo -e "${GREEN}  Java is up to date.${RESET}"
-      java_status="up to date"
       add_summary "Java (Zulu)" "$java_current" "" "Up to date" "$java_legacy_note"
     fi
   else
@@ -404,10 +398,14 @@ if command -v java &>/dev/null; then
     zulu_latest_cask=$(brew search --cask "zulu@" 2>/dev/null | grep -oE 'zulu@[0-9]+' | sort -t@ -k2 -n | tail -1)
     zulu_install_cmd="${zulu_latest_cask:-zulu}"
     # Check for existing non-Homebrew JDK installations
-    manual_jdks=$(ls -d /Library/Java/JavaVirtualMachines/*.jdk 2>/dev/null || true)
-    if [[ -n "$manual_jdks" ]]; then
+    manual_jdk_paths=()
+    while IFS= read -r jdk_path; do
+      [[ -n "$jdk_path" ]] && manual_jdk_paths+=("$jdk_path")
+    done < <(find /Library/Java/JavaVirtualMachines -maxdepth 1 -name "*.jdk" 2>/dev/null || true)
+
+    if [[ ${#manual_jdk_paths[@]} -gt 0 ]]; then
       echo -e "  ${YELLOW}Existing JDK installation(s) found:${RESET}"
-      for jdk_path in $manual_jdks; do
+      for jdk_path in "${manual_jdk_paths[@]}"; do
         echo -e "    $(basename "$jdk_path")"
       done
       echo ""
@@ -419,31 +417,12 @@ if command -v java &>/dev/null; then
       echo -e "  ${YELLOW}Not installed via Homebrew — install with: brew install --cask ${zulu_install_cmd}${RESET}"
       add_summary "Java (Zulu)" "$java_current" "" "Not managed" "Run: brew install --cask ${zulu_install_cmd}"
     fi
-    java_status="not managed by Homebrew"
   fi
 fi
 
 # ── Slack CLI ─────────────────────────────────────
 
-if command -v slack &>/dev/null; then
-  header "Slack CLI"
-  slack_current=$(slack version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  slack_latest=$(brew info --json=v2 --cask slack-cli 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['casks'][0]['version'])" 2>/dev/null || true)
-  if [[ -n "$slack_latest" && -n "$slack_current" && "$slack_current" != "$slack_latest" ]]; then
-    echo -e "  Current: ${YELLOW}${slack_current}${RESET}"
-    echo -e "  Latest:  ${GREEN}${slack_latest}${RESET}"
-    echo ""
-    echo -e "${YELLOW}Updating Slack CLI...${RESET}"
-    brew upgrade --cask slack-cli 2>&1 || true
-    slack_status="updated (${slack_current} → ${slack_latest})"
-    add_summary "Slack CLI" "$slack_current" "$slack_latest" "Updated" "Via Homebrew cask"
-  else
-    echo -e "  Version: ${slack_current}"
-    echo -e "${GREEN}  Slack CLI is up to date.${RESET}"
-    slack_status="up to date"
-    add_summary "Slack CLI" "$slack_current" "" "Up to date" ""
-  fi
-fi
+check_brew_cask_tool "Slack CLI" "slack" "slack-cli" "slack version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1"
 
 # ── Google Cloud CLI ──────────────────────────────
 
@@ -452,42 +431,22 @@ if command -v gcloud &>/dev/null; then
   gcloud_current=$(gcloud version 2>/dev/null | head -1 | awk '{print $NF}')
   echo -e "  Version: ${gcloud_current}"
   echo -e "${YELLOW}Checking for updates...${RESET}"
-  gcloud_update_output=$(gcloud components update --quiet 2>&1 || true)
+  gcloud components update --quiet 2>&1 || true
   gcloud_new=$(gcloud version 2>/dev/null | head -1 | awk '{print $NF}')
   if [[ -n "$gcloud_current" && -n "$gcloud_new" && "$gcloud_current" != "$gcloud_new" ]]; then
     echo -e "  Previous: ${YELLOW}${gcloud_current}${RESET}"
     echo -e "  Updated:  ${GREEN}${gcloud_new}${RESET}"
-    gcloud_status="updated (${gcloud_current} → ${gcloud_new})"
     add_summary "Google Cloud" "$gcloud_current" "$gcloud_new" "Updated" "Via gcloud components"
   else
     echo -e "${GREEN}  Google Cloud CLI is up to date.${RESET}"
-    gcloud_status="up to date"
     add_summary "Google Cloud" "$gcloud_current" "" "Up to date" ""
   fi
 fi
 
 # ── Playwright CLI ───────────────────────────────
 
-if command -v npx &>/dev/null && npx playwright --version &>/dev/null; then
-  header "Playwright CLI"
-  pw_current=$(npx playwright --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-  pw_latest=$(npm view @playwright/test version 2>/dev/null || true)
-  if [[ -n "$pw_latest" && -n "$pw_current" && "$pw_current" != "$pw_latest" ]]; then
-    echo -e "  Current: ${YELLOW}${pw_current}${RESET}"
-    echo -e "  Latest:  ${GREEN}${pw_latest}${RESET}"
-    echo ""
-    echo -e "${YELLOW}Updating Playwright...${RESET}"
-    npm install -g @playwright/test@latest 2>&1 || true
-    echo -e "${YELLOW}Updating Playwright browsers...${RESET}"
-    npx playwright install 2>&1 || true
-    playwright_status="updated (${pw_current} → ${pw_latest})"
-    add_summary "Playwright" "$pw_current" "$pw_latest" "Updated" "Via npm global"
-  else
-    echo -e "  Version: ${pw_current}"
-    echo -e "${GREEN}  Playwright is up to date.${RESET}"
-    playwright_status="up to date"
-    add_summary "Playwright" "$pw_current" "" "Up to date" ""
-  fi
+if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
+  check_npm_tool "Playwright" "npx playwright" "@playwright/test" "npx playwright install"
 fi
 
 # ── Homebrew Cleanup ─────────────────────────────────
