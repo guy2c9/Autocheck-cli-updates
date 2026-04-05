@@ -36,7 +36,7 @@ rm -f ~/.cli-update-last-run; curl -sL https://raw.githubusercontent.com/guy2c9/
 
 ## Run Automatically (Once Per Day)
 
-This setup runs the update check once per day, triggered the first time you type `claude` or `cca` in your terminal. Every subsequent use that same day skips straight to the command.
+This setup runs the update check once per day, triggered the first time you type `claude`, `cca`, `codex`, or `gemini` in your terminal. Every subsequent use that same day skips straight to the command.
 
 Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that uses zsh.
 
@@ -54,7 +54,7 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
    ```
 5. Replace it with the following block (or add it if the line doesn't exist):
    ```bash
-   # CLI update check — runs once per day before first claude/cca invocation
+   # CLI update check — runs once per day before first claude/cca/codex/gemini invocation
    _cli_update_check() {
      local last_run_file="$HOME/.cli-update-last-run"
      local today=$(date +%Y-%m-%d)
@@ -74,6 +74,16 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
      command claude "$@"
    }
 
+   codex() {
+     _cli_update_check
+     command codex "$@"
+   }
+
+   gemini() {
+     _cli_update_check
+     command gemini "$@"
+   }
+
    alias cca="claude"
    ```
 6. Exit the editor: press **Ctrl + X**, then **Y** to save, then **Enter** to confirm the filename
@@ -81,7 +91,7 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
    ```
    source ~/.zshrc
    ```
-8. Test it — type `claude` or `cca`. The update script should run first, then Claude Code launches. Run it again and it should skip straight to Claude Code.
+8. Test it — type `claude`, `cca`, `codex`, or `gemini`. The update script should run first, then the CLI launches. Run it again and it should skip straight to the CLI.
 
 ### Remove Automatic Updates
 
@@ -89,7 +99,7 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
    ```
    nano ~/.zshrc
    ```
-2. Delete the `_cli_update_check` function, the `claude` function, and the `alias cca="claude"` line
+2. Delete the `_cli_update_check` function, the `claude`, `codex`, and `gemini` functions, and the `alias cca="claude"` line
 3. If you still want the `cca` shortcut without the update check, add back:
    ```
    alias cca="claude"

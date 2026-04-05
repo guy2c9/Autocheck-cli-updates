@@ -88,6 +88,16 @@ claude() {
   command claude "$@"
 }
 
+codex() {
+  _cli_update_check
+  command codex "$@"
+}
+
+gemini() {
+  _cli_update_check
+  command gemini "$@"
+}
+
 alias cca="claude"
 ```
 
