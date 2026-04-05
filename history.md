@@ -44,7 +44,7 @@
 
 **Commits made:**
 
-13. TBD — Add Playwright CLI update check
+13. `0de3beb` — Add Playwright CLI update check
 
 **What was added:**
 
@@ -55,13 +55,15 @@
 
 **Commits made:**
 
-14. TBD — Add Codex CLI and Gemini CLI update checks
+14. `f26f2cf` — Add Codex CLI and Gemini CLI update checks
+15. `e8f1198` — Add codex and gemini as trigger commands for daily update check
 
 **What was added:**
 
 - Codex CLI section (OpenAI): checks current version via `codex --version`, compares against npm registry (`npm view @openai/codex version`), updates via `npm install -g @openai/codex@latest`
 - Gemini CLI section (Google): checks current version via `gemini --version`, compares against npm registry (`npm view @google/gemini-cli version`), updates via `npm install -g @google/gemini-cli@latest`
 - README table updated with both new rows
+- `codex()` and `gemini()` wrapper functions added to `.zshrc` setup — daily update check now triggers on `claude`, `cca`, `codex`, or `gemini`
 - Tool count now 15
 
 ---

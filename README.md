@@ -28,7 +28,7 @@ A shell script that checks for and installs updates across all CLI applications 
 curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh -o /tmp/check-cli-updates.sh && bash /tmp/check-cli-updates.sh
 ```
 
-To also reset the daily check so it runs again next time you open `claude`/`cca`:
+To also reset the daily check so it runs again next time you open `claude`/`cca`/`codex`/`gemini`:
 
 ```bash
 rm -f ~/.cli-update-last-run; curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh -o /tmp/check-cli-updates.sh && bash /tmp/check-cli-updates.sh
