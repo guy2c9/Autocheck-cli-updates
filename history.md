@@ -103,6 +103,26 @@ gemini() {
 alias cca="claude"
 ```
 
+### Session 5 — 2026-04-05 (Code Quality & Safety)
+
+**Commits made:**
+
+16. `3be075c` — Improve code quality: refactor helpers, fix safety issues, add CI
+
+**What was changed:**
+
+- Extracted `check_npm_tool` helper — Codex, Gemini, and Playwright now share one function instead of 3 copy-pasted blocks
+- Extracted `check_brew_cask_tool` helper — 1Password and Slack CLI share one function instead of 2 copy-pasted blocks
+- Extracted `brew_json_field` helper — replaces `python3 -c` JSON parsing with `grep`/`sed` (no new dependency needed)
+- Replaced automatic `sudo rm -rf` of legacy JDKs with report-only output (prints manual removal commands instead)
+- Fixed unquoted variables in `for` loops by using properly quoted arrays via `read` loops (ShellCheck compliance)
+- Removed unused status variables to reduce dead code
+- Added `.gitignore` (`.DS_Store`, editor swap files)
+- Added MIT `LICENSE`
+- Added `.github/workflows/lint.yml` — ShellCheck CI on push/PR to main
+
+**No user-facing changes** — script path, invocation, output format, and `.zshrc` setup are all unchanged.
+
 ---
 
 ## Recommendations
@@ -115,7 +135,15 @@ alias cca="claude"
 4. ~~pip3 `--break-system-packages` auto-upgrade~~ — **Fixed.** Changed to report-only, no longer auto-upgrades
 5. ~~README SF CLI commands don't match script~~ — **Fixed.** Table now matches actual behaviour
 
+### Resolved (Session 5 — 2026-04-05)
+
+6. ~~Legacy JDK removal uses `sudo rm -rf` which silently fails without sudo~~ — **Fixed.** Changed to report-only with manual removal commands
+7. ~~Duplicated tool-check blocks across Codex/Gemini/Playwright/1Password/Slack~~ — **Fixed.** Extracted `check_npm_tool` and `check_brew_cask_tool` helpers
+8. ~~`python3 -c` JSON parsing fragile if Python unavailable~~ — **Fixed.** Replaced with `grep`/`sed` via `brew_json_field` helper
+9. ~~Unquoted variables in word-splitting contexts~~ — **Fixed.** All path loops now use quoted arrays
+10. ~~No CI pipeline~~ — **Fixed.** Added GitHub Actions ShellCheck workflow
+11. ~~No license file~~ — **Fixed.** Added MIT LICENSE
+
 ### Remaining
 
 - **`set -uo pipefail`** — `set -u` could abort on unset variables in edge cases. Variables are mostly initialised but worth verifying if new tool sections are added
-- **Legacy JDK removal** uses `sudo rm -rf` which will silently fail without sudo. Acceptable since the fallback message is clear
