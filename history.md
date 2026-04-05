@@ -77,11 +77,10 @@ _cli_update_check() {
   if [ "$(cat "$last_run_file" 2>/dev/null)" != "$today" ]; then
     local tmp="/tmp/check-cli-updates.sh"
     if curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh -o "$tmp" && [ -s "$tmp" ]; then
-      bash "$tmp"
+      bash "$tmp" && echo "$today" > "$last_run_file"
     else
       echo "⚠ CLI update check: could not fetch script"
     fi
-    echo "$today" > "$last_run_file"
   fi
 }
 
@@ -108,8 +107,9 @@ alias cca="claude"
 **Commits made:**
 
 16. `3be075c` — Improve code quality: refactor helpers, fix safety issues, add CI
+17. `bc1df69` — Fix false status reporting and add post-update verification
 
-**What was changed:**
+**What was changed (commit 16):**
 
 - Extracted `check_npm_tool` helper — Codex, Gemini, and Playwright now share one function instead of 3 copy-pasted blocks
 - Extracted `check_brew_cask_tool` helper — 1Password and Slack CLI share one function instead of 2 copy-pasted blocks
@@ -121,7 +121,14 @@ alias cca="claude"
 - Added MIT `LICENSE`
 - Added `.github/workflows/lint.yml` — ShellCheck CI on push/PR to main
 
-**No user-facing changes** — script path, invocation, output format, and `.zshrc` setup are all unchanged.
+**What was changed (commit 17):**
+
+- Registry/API lookup failures (npm, brew cask, GitHub API) now report "Check failed" instead of falsely showing "up to date"
+- All update commands (`npm install -g`, `brew upgrade --cask`, `brew upgrade gh`) now verify the version changed post-install — reports "Update failed" if version is unchanged
+- Summary table renders "Check failed" and "Update failed" statuses in red
+- `.zshrc` wrapper (README + history) now only stamps the day-file on successful script execution — a failed curl or crashed script will retry next invocation instead of silently skipping for the rest of the day
+
+**No user-facing changes** — script path, invocation, output format, and `.zshrc` setup are all unchanged. Existing users who update their `.zshrc` wrapper get the retry-on-failure improvement, but the old wrapper continues to work.
 
 ---
 
@@ -143,6 +150,9 @@ alias cca="claude"
 9. ~~Unquoted variables in word-splitting contexts~~ — **Fixed.** All path loops now use quoted arrays
 10. ~~No CI pipeline~~ — **Fixed.** Added GitHub Actions ShellCheck workflow
 11. ~~No license file~~ — **Fixed.** Added MIT LICENSE
+12. ~~Registry/API lookup failures silently collapse to "up to date"~~ — **Fixed.** Now reports "Check failed" with reason
+13. ~~Failed updates reported as successful (no post-update verification)~~ — **Fixed.** All helpers now re-check version after install
+14. ~~`.zshrc` wrapper stamps date even on fetch/script failure~~ — **Fixed.** Day-stamp only written on successful run
 
 ### Remaining
 

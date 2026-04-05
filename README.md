@@ -61,11 +61,10 @@ Works with **Warp**, **Terminal.app**, **iTerm2**, or any macOS terminal that us
      if [ "$(cat "$last_run_file" 2>/dev/null)" != "$today" ]; then
        local tmp="/tmp/check-cli-updates.sh"
        if curl -sL https://raw.githubusercontent.com/guy2c9/Autocheck-cli-updates/main/check-cli-updates.sh -o "$tmp" && [ -s "$tmp" ]; then
-         bash "$tmp"
+         bash "$tmp" && echo "$today" > "$last_run_file"
        else
          echo "⚠ CLI update check: could not fetch script"
        fi
-       echo "$today" > "$last_run_file"
      fi
    }
 

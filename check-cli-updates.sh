@@ -34,7 +34,11 @@ check_npm_tool() {
   current=$(eval "$version_cmd" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
   latest=$(npm view "$npm_pkg" version 2>/dev/null || true)
 
-  if [[ -n "$latest" && -n "$current" && "$current" != "$latest" ]]; then
+  if [[ -z "$latest" ]]; then
+    echo -e "  Version: ${current:-unknown}"
+    echo -e "  ${RED}Could not reach npm registry — skipping update check.${RESET}"
+    add_summary "$display_name" "${current:-unknown}" "" "Check failed" "npm registry unreachable"
+  elif [[ -n "$current" && "$current" != "$latest" ]]; then
     echo -e "  Current: ${YELLOW}${current}${RESET}"
     echo -e "  Latest:  ${GREEN}${latest}${RESET}"
     echo ""
@@ -43,7 +47,16 @@ check_npm_tool() {
     if [[ -n "$post_cmd" ]]; then
       eval "$post_cmd" 2>&1 || true
     fi
-    add_summary "$display_name" "$current" "$latest" "Updated" "Via npm global"
+    # Verify the update actually applied
+    local new_ver
+    new_ver=$(eval "$version_cmd" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ -n "$new_ver" && "$new_ver" != "$current" ]]; then
+      echo -e "${GREEN}  Updated to ${new_ver}.${RESET}"
+      add_summary "$display_name" "$current" "$new_ver" "Updated" "Via npm global"
+    else
+      echo -e "  ${RED}Update may have failed — still on ${current}.${RESET}"
+      add_summary "$display_name" "$current" "$latest" "Update failed" "npm install did not change version"
+    fi
   else
     echo -e "  Version: ${current}"
     echo -e "${GREEN}  ${display_name} is up to date.${RESET}"
@@ -67,13 +80,26 @@ check_brew_cask_tool() {
   cask_json=$(brew info --json=v2 --cask "$cask_name" 2>/dev/null || true)
   latest=$(brew_json_field "$cask_json" "version")
 
-  if [[ -n "$latest" && -n "$current" && "$current" != "$latest" ]]; then
+  if [[ -z "$latest" ]]; then
+    echo -e "  Version: ${current:-unknown}"
+    echo -e "  ${RED}Could not fetch cask info for ${cask_name} — skipping update check.${RESET}"
+    add_summary "$display_name" "${current:-unknown}" "" "Check failed" "brew cask info unavailable"
+  elif [[ -n "$current" && "$current" != "$latest" ]]; then
     echo -e "  Current: ${YELLOW}${current}${RESET}"
     echo -e "  Latest:  ${GREEN}${latest}${RESET}"
     echo ""
     echo -e "${YELLOW}Updating ${display_name}...${RESET}"
     brew upgrade --cask "$cask_name" 2>&1 || true
-    add_summary "$display_name" "$current" "$latest" "Updated" "Via Homebrew cask"
+    # Verify the update actually applied
+    local new_ver
+    new_ver=$(eval "$version_cmd" 2>/dev/null || true)
+    if [[ -n "$new_ver" && "$new_ver" != "$current" ]]; then
+      echo -e "${GREEN}  Updated to ${new_ver}.${RESET}"
+      add_summary "$display_name" "$current" "$new_ver" "Updated" "Via Homebrew cask"
+    else
+      echo -e "  ${RED}Update may have failed — still on ${current}.${RESET}"
+      add_summary "$display_name" "$current" "$latest" "Update failed" "brew upgrade did not change version"
+    fi
   else
     echo -e "  Version: ${current}"
     echo -e "${GREEN}  ${display_name} is up to date.${RESET}"
@@ -291,13 +317,24 @@ if command -v gh &>/dev/null; then
   header "GitHub CLI (gh)"
   gh_current=$(gh --version | head -1 | awk '{print $3}')
   gh_latest=$(gh api repos/cli/cli/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//' || true)
-  if [[ -n "$gh_latest" && "$gh_current" != "$gh_latest" ]]; then
+  if [[ -z "$gh_latest" ]]; then
+    echo -e "  Version: ${gh_current}"
+    echo -e "  ${RED}Could not reach GitHub API — skipping update check.${RESET}"
+    add_summary "GitHub CLI" "$gh_current" "" "Check failed" "GitHub API unreachable"
+  elif [[ "$gh_current" != "$gh_latest" ]]; then
     echo -e "  Current: ${YELLOW}${gh_current}${RESET}"
     echo -e "  Latest:  ${GREEN}${gh_latest}${RESET}"
     echo ""
     echo -e "${YELLOW}Updating GitHub CLI...${RESET}"
     brew upgrade gh 2>&1 || true
-    add_summary "GitHub CLI" "$gh_current" "$gh_latest" "Updated" "Via Homebrew"
+    gh_new=$(gh --version 2>/dev/null | head -1 | awk '{print $3}')
+    if [[ -n "$gh_new" && "$gh_new" != "$gh_current" ]]; then
+      echo -e "${GREEN}  Updated to ${gh_new}.${RESET}"
+      add_summary "GitHub CLI" "$gh_current" "$gh_new" "Updated" "Via Homebrew"
+    else
+      echo -e "  ${RED}Update may have failed — still on ${gh_current}.${RESET}"
+      add_summary "GitHub CLI" "$gh_current" "$gh_latest" "Update failed" "brew upgrade did not change version"
+    fi
   else
     echo -e "  Version: ${gh_current}"
     echo -e "${GREEN}  GitHub CLI is up to date.${RESET}"
@@ -497,6 +534,8 @@ for i in "${!summary_names[@]}"; do
     pad_col "$name" 18; pad_col "$old_ver" 16 "$YELLOW"; pad_col "$new_ver" 16 "$GREEN"; pad_col "$status" 14 "$GREEN"; pad_col "$notes" 35
   elif [[ "$status" == "Up to date" ]]; then
     pad_col "$name" 18; pad_col "$old_ver" 16; pad_col "—" 16; pad_col "$status" 14 "$GREEN"; pad_col "$notes" 35
+  elif [[ "$status" == "Check failed" || "$status" == "Update failed" ]]; then
+    pad_col "$name" 18; pad_col "$old_ver" 16; pad_col "$new_ver" 16; pad_col "$status" 14 "$RED"; pad_col "$notes" 35
   else
     pad_col "$name" 18; pad_col "$old_ver" 16; pad_col "$new_ver" 16; pad_col "$status" 14 "$YELLOW"; pad_col "$notes" 35
   fi
