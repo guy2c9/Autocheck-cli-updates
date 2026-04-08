@@ -1,5 +1,6 @@
 #!/bin/bash
 # check-cli-updates.sh — Check for and install updates across all CLI applications
+# Runs at most once per week. Use --force to bypass the weekly gate.
 
 set -uo pipefail
 
@@ -10,6 +11,27 @@ export GREEN='\033[1;32m'
 export YELLOW='\033[1;33m'
 export RED='\033[1;31m'
 export RESET='\033[0m'
+
+# ── Weekly schedule gate ────────────────────────────
+TIMESTAMP_FILE="${HOME}/.cli-update-check-timestamp"
+WEEK_SECONDS=$((7 * 24 * 60 * 60))
+
+if [[ "${1:-}" != "--force" ]]; then
+  if [[ -f "$TIMESTAMP_FILE" ]]; then
+    last_run=$(cat "$TIMESTAMP_FILE")
+    now=$(date +%s)
+    elapsed=$(( now - last_run ))
+    if [[ $elapsed -lt $WEEK_SECONDS ]]; then
+      days_left=$(( (WEEK_SECONDS - elapsed) / 86400 ))
+      echo -e "${GREEN}CLI update check already ran this week.${RESET}"
+      echo -e "Next check in ~${days_left} day(s). Use ${BOLD}--force${RESET} to run now."
+      exit 0
+    fi
+  fi
+fi
+
+# Record current run timestamp
+date +%s > "$TIMESTAMP_FILE"
 
 # Helper: shorten Warp version (e.g. 0.2025.04.01.08.02.stable_02 → 2025.04.01)
 shorten_warp_ver() {
